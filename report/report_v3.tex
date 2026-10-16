@@ -1,0 +1,199 @@
+\documentclass[11pt,a4paper]{article}
+% Report v3 — every number comes from results/macros.tex (written by ser_tolerance_v3).
+% Missing numbers render as a bold [key] so nothing unmeasured can slip into the PDF.
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,graphicx,booktabs,xcolor,enumitem,float,microtype,hyperref,caption}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black}
+\captionsetup{font=small,labelfont=bf}
+\setlist{leftmargin=*,itemsep=2pt,topsep=3pt}
+\emergencystretch=2em
+
+\makeatletter
+\newcommand{\res}[1]{\ifcsname res@#1\endcsname\csname res@#1\endcsname\else\textbf{\textcolor{red!70!black}{[\texttt{\detokenize{#1}}]}}\fi}
+\makeatother
+\IfFileExists{results/macros.tex}{\input{results/macros.tex}}{}
+\IfFileExists{results/derived.tex}{\input{results/derived.tex}}{}
+\newcommand{\todo}[1]{\textcolor{orange!70!black}{\textit{[To write after the rerun: #1]}}}
+\newcommand{\fig}[2]{\IfFileExists{results/#1}{\includegraphics[width=#2\linewidth]{results/#1}}%
+  {\fbox{\parbox[c][4cm][c]{#2\linewidth}{\centering\small\texttt{results/\detokenize{#1}}\par(run the notebook)}}}}
+
+\title{\vspace{-1.2cm}\textbf{How much spike-transmission error can a rate-based motor decoder tolerate?}\\[3pt]
+\large Much less than a per-spike error model suggests, and it is partly set by temporal integration}
+\author{Jihun Yu \quad {\small Dept.\ of Bio and Brain Engineering, KAIST \quad \texttt{youjhun0225@kaist.ac.kr}}}
+\date{\small Draft v3, October 2026 \quad Code: \url{https://github.com/youjhun/spike-error-tolerance-decoders}}
+
+\begin{document}
+\maketitle
+\vspace{-0.6cm}
+
+% ════════════════════════════════ ONE-PAGE SUMMARY ════════════════════════════════
+\section*{Summary}
+
+\textbf{Question.} Lee et al.\ (2024) showed that an ASBIT wireless link keeps 88.8\% (M1) and 85.4\% (S1) of
+wired decoding accuracy at a spike error rate (SER) of $10^{-3}$, using an SNN decoder on 1-ms data, and
+suggested that real populations, which share information, should be even more robust~\cite{lee2024}.
+I asked how much SER classical rate-based decoders tolerate on a public macaque dataset, and why.
+
+\textbf{Setup.} CRCNS pmd-1 (\res{n_m1} M1 + \res{n_pmd} PMd units, \res{n_trials} trials, 10-ms bins)~\cite{pmd1};
+Ridge, MLP, LSTM and causal Transformer decoders of 2-D hand velocity from a 200-ms causal window;
+trial-level 5-fold cross-validation; decoders trained once on clean data and tested on corrupted data.
+Spike errors were injected under two definitions of SER (Sec.~\ref{sec:ser}).
+
+\begin{figure}[H]\centering \fig{fig1_ser_definitions.png}{0.82}
+\caption{\textbf{Left:} retention $\rho=r_{\mathrm{SER}}/r_{\mathrm{clean}}$ (mean, 95\% bootstrap CI) for each decoder.
+Dashed: SER normalised per spike (used in my previous report). Solid: SER as the fraction of 1-ms bins in error
+(my reading of Lee et al.). Crosses: Lee et al.'s SNN at SER $10^{-3}$ (different data and decoder; shown for scale only).
+\textbf{Right:} false spikes each definition adds per neuron, against the mean true rate (\res{rate_hz}\,Hz).}
+\end{figure}
+
+\textbf{Results.}
+\begin{enumerate}
+  \item \textbf{Two SER definitions.} At SER $=10^{-2}$, Ridge retains $\rho=$ \res{rho_Ridge_per_spike_1e-2}
+  when errors are counted per spike, but \res{rho_Ridge_per_1ms_1e-2} \res{rho_Ridge_per_1ms_1e-2_ci} when they are counted per
+  1-ms bin. The per-bin definition adds \res{fhz_1ms_1e-2}\,Hz of false spikes per neuron, versus \res{fhz_spike_1e-2}\,Hz
+  per spike. Under the per-bin model the more flexible decoders lose more: $\rho=$ \res{rho_MLP_per_1ms_1e-2} (MLP), \res{rho_LSTM_per_1ms_1e-2} (LSTM) and \res{rho_Transformer_per_1ms_1e-2} (Transformer). They are the most accurate on clean data, but from SER $3\times10^{-3}$ on Ridge gives the highest absolute $r$ (\res{rabs_Ridge_1ms_3e-3} vs \res{rabs_MLP_1ms_3e-3} for MLP).
+  \item \textbf{Temporal integration.} Summing to 20-ms bins and smoothing the output raised Ridge retention at SER $10^{-2}$ from \res{rho_bin10ms_s0_1e-2} to \res{rho_bin20ms_s3_1e-2}, with no loss of clean accuracy ($r=$ \res{r_bin10ms_s0} $\to$ \res{r_bin20ms_s3}; Fig.~\ref{fig:int}).
+  \item \textbf{Population size.} Retention did not rise with the number of units (SER $10^{-2}$: \res{rho_N20_1e-2} at $N=20$, \res{rho_N161_1e-2} at $N=161$; Fig.~\ref{fig:pop}), although clean accuracy did. The ``population dilution'' explanation of my previous report is not supported.
+\end{enumerate}
+
+\textbf{Reading against Lee et al.} Under the per-bin model, the rate-based decoders here keep 94--96\% at SER $10^{-3}$, against 88.8\% for their SNN. Data, channel count and decoder differ, so this gap is not a measured advantage.
+
+\textbf{What this changes.} My previous report claimed a 30-point robustness advantage of rate-based decoders over the
+SNN. That comparison mixed two SER definitions and misdescribed the SNN, which itself bins spikes into 25-ms
+intervals~\cite{lee2024}; it is withdrawn (Appendix~\ref{app:changes}).
+
+\textbf{Limits.} One session of one monkey; i.i.d.\ errors; no SNN or ASBIT channel simulation; 10-ms data cannot
+reproduce 1-ms effects exactly.
+
+\newpage
+% ════════════════════════════════ MAIN TEXT ════════════════════════════════
+\section{Motivation}
+In the ASBIT protocol each sensor sends a Gold-coded packet only when it detects an event, so link errors appear as
+missed or false spikes rather than corrupted samples~\cite{lee2024}. The event error rate (EER) a link must reach
+therefore depends on how many spike errors the downstream decoder can absorb. Lee et al.\ found that network
+performance is set mainly by the total number of events per second (about $10^5$ events/s at EER $<10^{-3}$), and
+that the number of nodes is likely limited by wireless power transfer and SAR rather than bandwidth~\cite{lee2024}.
+A decoder that tolerates more spike errors would relax the EER target. This report measures that tolerance for
+rate-based decoders and asks which property of the decoder explains it.
+
+\section{Methods}
+\paragraph{Data.} CRCNS pmd-1, file \texttt{MM\_S1\_processed.mat} (monkey M, session 1; ``S1'' is the session,
+not somatosensory cortex)~\cite{pmd1}. \res{n_neurons} units (\res{n_m1} M1, \res{n_pmd} PMd), \res{n_trials} trials,
+10-ms bins; \res{sparsity}\% of unit-bins are empty, mean rate \res{rate_hz}\,Hz, \res{kbar} active units per bin.
+
+\paragraph{Features and validation.} For each trial separately, $\mathbf{x}_t=[\mathbf{s}_{t-19},\dots,\mathbf{s}_t]$
+(20 bins $\times$ \res{n_neurons} units). Folds are split by trial; lag windows never cross trial boundaries.
+No spike-count transform and no output smoothing are used in the main analysis; smoothing ($\sigma=3$ bins,
+applied within each trial) appears only in Sec.~\ref{sec:int}.
+
+\paragraph{Decoders.} Ridge (inputs standardised; penalty chosen by inner 3-fold trial-level CV from
+$\{1,10,\dots,10^4\}$); MLP ($3220\!\to\!512\!\to\!256\!\to\!2$, dropout 0.2); 2-layer LSTM (hidden 128);
+3-layer causal Transformer ($d=128$, 4 heads). Neural networks use Adam ($10^{-3}$, weight decay $10^{-4}$) with
+early stopping on 10\% of training trials. Accuracy is Pearson $r$ averaged over $v_x$ and $v_y$.
+
+\paragraph{Spike-error models.}\label{sec:ser}
+Decoders are trained once on clean data; only test trials are corrupted, with \texttt{N\_CORRUPT\_REPEATS}~=~5
+independent draws per fold and SER level.
+\begin{itemize}
+  \item \textbf{Per spike} (previous report): $\mathrm{SER}=(N_{\mathrm{miss}}+N_{\mathrm{false}})/N_{\mathrm{spike}}$;
+  each spike is deleted with probability $p/2$ and $\mathrm{Binomial}(N_{\mathrm{spike}},p/2)$ false spikes are placed at random.
+  \item \textbf{Per 1-ms bin} (my reading of Lee et al., who count a missed or false spike within a 1-ms bin as an
+  error~\cite{lee2024}; the denominator is not stated explicitly): each 10-ms bin is treated as ten 1-ms slots; a
+  spike is missed with probability $p$, and each empty slot receives a false spike with probability $p$.
+\end{itemize}
+Under the per-bin model a neuron firing at $\lambda$\,Hz gains about $1000p$ false spikes per second; under the
+per-spike model it gains $\lambda p/2$. At the rates in this dataset the two differ by more than two orders of magnitude.
+
+\paragraph{Statistics.} $\rho=r_{\mathrm{SER}}/r_{\mathrm{clean}}$ per fold and draw; 95\% bootstrap CIs over these
+values (not independent across draws within a fold; see Limitations). A drop is tested by a paired $t$-test on Fisher-$z$ transformed per-fold correlations, as in Lee et al.,
+with Benjamini--Hochberg correction across SER levels.
+
+\section{Results}
+\subsection{Clean accuracy}
+\begin{table}[H]\centering\small
+\begin{tabular}{lcccc}\toprule
+ & Ridge & MLP & LSTM & Transformer\\\midrule
+$r$ (mean $v_x$, $v_y$) & \res{r_Ridge} & \res{r_MLP} & \res{r_LSTM} & \res{r_Transformer}\\
+95\% CI & \res{r_Ridge_ci} & \res{r_MLP_ci} & \res{r_LSTM_ci} & \res{r_Transformer_ci}\\
+$r$ ($v_x$ only) & \res{rvx_Ridge} & \res{rvx_MLP} & \res{rvx_LSTM} & \res{rvx_Transformer}\\
+$r$ with smoothing $\sigma=3$ & \res{rsm_Ridge} & \res{rsm_MLP} & \res{rsm_LSTM} & \res{rsm_Transformer}\\\bottomrule
+\end{tabular}
+\caption{Clean decoding, trial-level 5-fold CV. Lee et al.\ report $r=0.9324$ for $v_x$ with an SNN on different M1
+data; the numbers are not directly comparable.}\end{table}
+
+\subsection{Retention under the two SER definitions}
+\begin{table}[H]\centering\small
+\begin{tabular}{lcccccc}\toprule
+ & \multicolumn{2}{c}{SER $10^{-3}$} & \multicolumn{2}{c}{SER $10^{-2}$} & \multicolumn{2}{c}{SER $10^{-1}$}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Decoder & per spike & per 1 ms & per spike & per 1 ms & per spike & per 1 ms\\\midrule
+Ridge & \res{rho_Ridge_per_spike_1e-3} & \res{rho_Ridge_per_1ms_1e-3} & \res{rho_Ridge_per_spike_1e-2} & \res{rho_Ridge_per_1ms_1e-2} & \res{rho_Ridge_per_spike_1e-1} & \res{rho_Ridge_per_1ms_1e-1}\\
+MLP & \res{rho_MLP_per_spike_1e-3} & \res{rho_MLP_per_1ms_1e-3} & \res{rho_MLP_per_spike_1e-2} & \res{rho_MLP_per_1ms_1e-2} & \res{rho_MLP_per_spike_1e-1} & \res{rho_MLP_per_1ms_1e-1}\\
+LSTM & \res{rho_LSTM_per_spike_1e-3} & \res{rho_LSTM_per_1ms_1e-3} & \res{rho_LSTM_per_spike_1e-2} & \res{rho_LSTM_per_1ms_1e-2} & \res{rho_LSTM_per_spike_1e-1} & \res{rho_LSTM_per_1ms_1e-1}\\
+Transformer & \res{rho_Transformer_per_spike_1e-3} & \res{rho_Transformer_per_1ms_1e-3} & \res{rho_Transformer_per_spike_1e-2} & \res{rho_Transformer_per_1ms_1e-2} & \res{rho_Transformer_per_spike_1e-1} & \res{rho_Transformer_per_1ms_1e-1}\\\midrule
+False spikes added (Hz) & \res{fhz_spike_1e-3} & \res{fhz_1ms_1e-3} & \res{fhz_spike_1e-2} & \res{fhz_1ms_1e-2} & \res{fhz_spike_1e-1} & \res{fhz_1ms_1e-1}\\\bottomrule
+\end{tabular}
+\caption{Retention $\rho$ (mean over 5 folds $\times$ 5 draws). Full sweep, CIs and BH-corrected tests are in
+\texttt{results.json}.}\end{table}
+Under the per-spike model, retention stays above 0.97 for every decoder up to SER $10^{-1}$. Under the per-1-ms model it falls to \res{rho_MLP_per_1ms_1e-3}--\res{rho_Ridge_per_1ms_1e-3} at $10^{-3}$ and to \res{rho_LSTM_per_1ms_1e-2}--\res{rho_Ridge_per_1ms_1e-2} at $10^{-2}$; Ridge degrades least and LSTM most. Every per-1-ms drop from $10^{-4}$ upward survives Benjamini--Hochberg correction; per-spike drops are statistically detectable from about $10^{-3}$ but stay at or below 0.3\% up to $10^{-2}$. Ridge's penalty was chosen at the top of the grid ($\alpha=10^4$, recorded for the last fold), so heavier shrinkage may raise its tolerance further.
+
+\subsection{Temporal integration}\label{sec:int}
+If binning acts as a low-pass filter on spike trains, wider bins should average out uncorrelated spike errors,
+whose power is spread across frequencies, while keeping the slow velocity-related signal. I re-binned the
+(already corrupted) 10-ms counts to 20 and 50\,ms, keeping a 200-ms window, with and without output smoothing.
+\begin{figure}[H]\centering \fig{fig2_integration.png}{0.62}
+\caption{Ridge retention under per-1-ms errors for different bin widths and smoothing ($\sigma$ in bins).}\label{fig:int}\end{figure}
+Both wider bins and output smoothing raised retention at SER $10^{-2}$; together, 20-ms bins with $\sigma=3$ gave \res{rho_bin20ms_s3_1e-2} \res{rho_bin20ms_s3_1e-2_ci}, against \res{rho_bin10ms_s0_1e-2} for the 10-ms baseline. Clean accuracy was unchanged or higher (\res{r_bin10ms_s0}, \res{r_bin20ms_s3}). At 50 ms without smoothing retention fell to \res{rho_bin50ms_s0_1e-2}, likely because only 4 lags remain; with smoothing it was \res{rho_bin50ms_s3_1e-2} but clean $r$ dropped to \res{r_bin50ms_s3}. Low-pass filtering helps, but recovers only part of the loss.
+
+\subsection{Population size and redundancy}
+\begin{figure}[H]\centering \fig{fig3_population.png}{0.55}
+\caption{Ridge retention under per-1-ms errors for random subsets of $N$ units (5 subsets each).}\label{fig:pop}\end{figure}
+The participation ratio of smoothed population activity is \res{pr} (out of \res{n_neurons} units), against \res{pr_shuf}
+after shuffling time bins within trials. So the population is strongly redundant: about 14 effective dimensions out of 161. Yet adding units did not improve retention (Fig.~\ref{fig:pop}; CIs overlap from $N=20$ to 161). One reading is that each added unit brings its own independent false spikes as well as signal, so redundancy improves clean accuracy without improving the ratio. Testing this needs a population-structure manipulation, not random subsampling.
+
+\section{Discussion}
+If the per-1-ms model is the right reading, rate-based decoders on this dataset need roughly SER $\le 10^{-3}$ to keep 95\% of clean accuracy, which is the error range Lee et al.\ design the ASBIT link for. Decoder-side measures (wider bins, smoothing, heavier shrinkage) buy only part of a decade. This suggests, as a hypothesis, that most of the error budget will have to come from the link and its power delivery, rather than from choosing a more tolerant decoder.
+
+A decoder's tolerance only matters relative to the error model of a real link. The per-bin model here assumes
+independent errors at a constant rate; Lee et al.\ show that a node's error rate depends mostly on its own
+backscatter amplitude, so near--far differences in SNR would make errors unequal across channels~\cite{lee2024}.
+Testing decoders under that channel-dependent error pattern is the natural next step, and it connects decoder
+tolerance to the power and SAR budget that limits node count.
+
+\section{Limitations}
+\begin{itemize}
+  \item One monkey, one session; no cross-session test.
+  \item The data are 10-ms bins, so 1-ms errors are emulated by sub-slot sampling.
+  \item No SNN was trained and no ASBIT link was simulated; comparison with Lee et al.\ is qualitative only.
+  \item The SER denominator in Lee et al.\ is my reading of the text and should be confirmed.
+  \item Ridge's penalty hit the top of the search grid; a wider grid is needed.
+  \item Confidence intervals pool fold $\times$ draw values (25 per condition); draws within a fold share one trained decoder and one test set, so they are not independent and the intervals are optimistic.
+\end{itemize}
+
+\appendix
+\section{Changes from the previous version (v2, June 2026)}\label{app:changes}
+\begin{itemize}
+  \item \textbf{Withdrawn: ``30-point advantage over the SNN''.} v2 compared retention under a per-spike SER with the
+  SNN's retention under a 1-ms SER, on different data. The per-spike model adds far fewer false spikes.
+  \item \textbf{Corrected: the SNN does not use precise inter-spike intervals.} It bins 1-ms spikes into 25-ms intervals
+  and is trained with $\pm$25\,ms jitter~\cite{lee2024}; v2's timing-versus-rate explanation was wrong.
+  \item \textbf{Corrected attribution.} The ASBIT paper is Lee, Lee et al.\ (2024), not ``Nurmikko et al.'';
+  ASBIT is the network protocol, not the decoder.
+  \item \textbf{Removed unsupported claims}: typical link BER values and power savings attributed to the paper.
+  \item \textbf{Analysis}: dropped the spike-count exponent $\alpha$ (chosen on a test fold in v2); removed default
+  output smoothing; corruption repeated 5 times instead of once; added CIs and BH correction.
+  \item \textbf{Dataset}: pmd-1 is from Perich, Lawlor, Kording and Miller and involves sequential reaching~\cite{pmd1};
+  v2 cited it incorrectly.
+  \item \textbf{Attention analysis} moved out of the main text; the attention weights in v2 (about 0.06--0.07 per bin
+  against a uniform 0.05) do not support a strong recency claim.
+\end{itemize}
+
+\begin{thebibliography}{9}\small
+\bibitem{lee2024} J.~Lee, A.-H.~Lee, V.~Leung, F.~Laiwalla, M.~A.~Lopez-Gordo, L.~Larson and A.~Nurmikko,
+``An asynchronous wireless network for capturing event-driven data from large populations of autonomous sensors,''
+\textit{Nature Electronics} \textbf{7}, 313--324 (2024). \href{https://doi.org/10.1038/s41928-024-01134-y}{doi:10.1038/s41928-024-01134-y}
+\bibitem{pmd1} M.~G.~Perich, P.~N.~Lawlor, K.~P.~Kording and L.~E.~Miller, ``Extracellular neural recordings from
+macaque primary and dorsal premotor motor cortex during a sequential reaching task,'' CRCNS.org (pmd-1).
+\href{https://doi.org/10.6080/K0FT8J72}{doi:10.6080/K0FT8J72}
+\end{thebibliography}
+\end{document}
